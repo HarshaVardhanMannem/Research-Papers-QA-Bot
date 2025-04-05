@@ -1,57 +1,97 @@
-"""Vector store creation and management."""
-from faiss import IndexFlatL2
-from langchain_community.vectorstores import FAISS
-from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain.document_transformers import LongContextReorder
-
+"""Vector store creation and management utilities."""
+from langchain.vectorstores import FAISS
 from src.embedding.embeddings import get_embedder
+import numpy as np
 
 def create_default_faiss():
-    """Create an empty FAISS vector store."""
+    """Create a default FAISS vector store."""
     embedder = get_embedder()
-    embed_dims = len(embedder.embed_query("test"))
-    return FAISS(
-        embedding_function=embedder,
-        index=IndexFlatL2(embed_dims),
-        docstore=InMemoryDocstore(),
-        index_to_docstore_id={},
-        normalize_L2=False
-    )
+    return FAISS.from_texts(["dummy_text_for_initialization"], embedder)
 
-def create_vector_stores(docs_chunks, extra_chunks):
-    """Create vector stores from document chunks."""
-    print("Constructing Vector Stores")
+def create_vector_store(docs_chunks, embedder):
+    """Create a vector store from document chunks."""
+    if not docs_chunks:
+        return create_default_faiss()
+    return FAISS.from_documents(docs_chunks, embedder)
+
+def create_vector_stores(docs_chunks_list, extra_docs_list=None):
+    """Create vector stores for multiple document chunk lists."""
+    embedder = get_embedder()
+    vector_stores = []
+    
+    # Process main document chunks
+    for docs_chunks in docs_chunks_list:
+        if docs_chunks:
+            vector_store = create_vector_store(docs_chunks, embedder)
+            vector_stores.append(vector_store)
+    
+    # Process extra documents if provided
+    if extra_docs_list:
+        for extra_doc in extra_docs_list:
+            if isinstance(extra_doc, str) and extra_doc.strip():  # Ensure non-empty string
+                vector_store = FAISS.from_texts([extra_doc], embedder)
+                vector_stores.append(vector_store)
+    
+    return vector_stores
+
+def aggregate_vector_stores(vector_stores):
+    """Aggregate multiple vector stores into one."""
+    if not vector_stores:
+        return create_default_faiss()
+    
+    base_store = vector_stores[0]
+    for store in vector_stores[1:]:
+        base_store.merge_from(store)
+    
+    return base_store
+
+def add_documents_to_vector_store(vector_store, docs_chunks):
+    """Add new document chunks to an existing vector store."""
+    if not docs_chunks:
+        return vector_store
+        
     embedder = get_embedder()
     
-    # Create vector store for extra chunks
-    vecstores = [FAISS.from_texts(extra_chunks, embedder)]
+    # Create embeddings and add to store
+    valid_chunks = [chunk for chunk in docs_chunks if hasattr(chunk, 'page_content') and chunk.page_content.strip()]
     
-    # Create vector stores for document chunks
-    for doc_chunks in docs_chunks:
-        if doc_chunks:  # Make sure there are chunks to add
-            vecstore = FAISS.from_documents(doc_chunks, embedder)
-            vecstores.append(vecstore)
-    
-    return vecstores
-
-def aggregate_vector_stores(vectorstores):
-    """Merge all vector stores into a single one."""
-    agg_vstore = create_default_faiss()
-    for vstore in vectorstores:
-        agg_vstore.merge_from(vstore)
-    return agg_vstore
+    if not valid_chunks:
+        print("Warning: No valid chunks to add to vector store")
+        return vector_store
+        
+    vector_store.add_documents(valid_chunks)
+    return vector_store
 
 def reorder_documents(docs):
-    """Reorder documents to optimize context window usage."""
-    reorderer = LongContextReorder()
-    return reorderer.transform_documents(docs)
+    """Reorder documents by relevance score."""
+    if not docs:
+        return []
+    return sorted(docs, key=lambda x: getattr(x, "relevance_score", 0), reverse=True)
 
-def docs_to_string(docs, title="Document"):
-    """Convert document chunks to a formatted string."""
-    out_str = ""
+def docs_to_string(docs):
+    """Convert document list to string representation."""
+    if not docs:
+        return "No relevant documents found."
+    
+    result = []
     for doc in docs:
-        doc_name = getattr(doc, 'metadata', {}).get('Title', title)
-        if doc_name:
-            out_str += f"[Quote from {doc_name}] "
-        out_str += getattr(doc, 'page_content', str(doc)) + "\n"
-    return out_str
+        content = getattr(doc, "page_content", "")
+        if not content or content.strip() == "":
+            continue
+            
+        metadata = getattr(doc, "metadata", {})
+        source = metadata.get("source", "")
+        title = metadata.get("Title", "")
+        
+        header = f"Source: {source}" if source else ""
+        header += f" Title: {title}" if title else ""
+        
+        if header:
+            result.append(f"{header}\n{content}\n")
+        else:
+            result.append(content)
+    
+    if not result:
+        return "No relevant document content found."
+    
+    return "\n\n".join(result)
