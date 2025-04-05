@@ -2,6 +2,11 @@ MIT License
 
 Copyright (c) 2025 Harsha Vardhan Mannem
 
+This project includes code adapted from NVIDIA's [Building RAG agents with LLM] course materials, which are provided for educational purposes. The code has been modified to create a fully functional QA bot application. The modifications and additions are released under the MIT License.
+
+Original source:
+NVIDIA [Buidling RAG agents with LLM] - [Link to course or materials]
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
