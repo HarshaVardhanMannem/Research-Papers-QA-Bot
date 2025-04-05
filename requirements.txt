@@ -1,0 +1,6 @@
+langchain
+langchain-nvidia-ai-endpoints
+faiss-cpu
+langchain-community
+streamlit
+arxiv
